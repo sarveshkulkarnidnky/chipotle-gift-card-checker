@@ -59,14 +59,46 @@ class ChipotleBalanceChecker:
                     'error': 'Could not find the gift card form on the page'
                 }
             
+            # Debug: Print form action and method
+            form_action = form.get('action', '')
+            form_method = form.get('method', 'GET').upper()
+            print(f"Form action: {form_action}")
+            print(f"Form method: {form_method}")
+            
             # Prepare form data based on the actual website structure
             form_data = {}
             
-            # Add the gift card number (16-digit)
-            form_data['cardNumber'] = card_number
+            # Try different possible field names for card number
+            possible_card_fields = ['gc_number', 'cardNumber', 'card_number', 'giftCardNumber', 'gift_card_number', 'number']
+            card_field_found = False
             
-            # Add email address
-            form_data['email'] = email
+            for field_name in possible_card_fields:
+                if soup.find('input', {'name': field_name}):
+                    form_data[field_name] = card_number
+                    card_field_found = True
+                    print(f"Using card field: {field_name}")
+                    break
+            
+            if not card_field_found:
+                # Fallback to common field name
+                form_data['gc_number'] = card_number
+                print("Using fallback card field: gc_number")
+            
+            # Try different possible field names for email
+            possible_email_fields = ['email', 'emailAddress', 'email_address', 'recipientEmail']
+            email_field_found = False
+            
+            for field_name in possible_email_fields:
+                if soup.find('input', {'name': field_name}):
+                    form_data[field_name] = email
+                    email_field_found = True
+                    print(f"Using email field: {field_name}")
+                    break
+            
+            if not email_field_found:
+                # Fallback to common field name
+                form_data['email'] = email
+                print("Using fallback email field: email")
             
             # Find any hidden form fields (CSRF tokens, etc.)
             hidden_inputs = soup.find_all('input', type='hidden')
@@ -75,18 +107,55 @@ class ChipotleBalanceChecker:
                 value = hidden_input.get('value', '')
                 if name:
                     form_data[name] = value
+                    print(f"Found hidden field: {name}")
+            
+            # Also look for any select fields or other inputs
+            all_inputs = soup.find_all(['input', 'select'])
+            for input_elem in all_inputs:
+                name = input_elem.get('name')
+                if name and name not in form_data:
+                    if input_elem.name == 'select':
+                        # Get the first option value
+                        first_option = input_elem.find('option')
+                        if first_option:
+                            form_data[name] = first_option.get('value', '')
+                    elif input_elem.get('type') == 'checkbox':
+                        form_data[name] = 'on'
+                    elif input_elem.get('type') == 'radio':
+                        if input_elem.get('checked'):
+                            form_data[name] = input_elem.get('value', '')
             
             print(f"Submitting gift card number: {card_number[:4]}****{card_number[-4:]}")
             print(f"Email: {email}")
+            print(f"Form data keys: {list(form_data.keys())}")
+            
+            # Determine the correct URL for form submission
+            submit_url = self.base_url
+            if form_action:
+                if form_action.startswith('http'):
+                    submit_url = form_action
+                elif form_action.startswith('/'):
+                    submit_url = f"https://chipotle.wgiftcard.com{form_action}"
+                else:
+                    submit_url = f"{self.base_url}/{form_action}"
+            
+            print(f"Submitting to: {submit_url}")
             
             # Submit the form to check balance
-            balance_response = self.session.post(self.base_url, data=form_data)
+            if form_method == 'POST':
+                balance_response = self.session.post(submit_url, data=form_data)
+            else:
+                balance_response = self.session.get(submit_url, params=form_data)
+            
             balance_response.raise_for_status()
             
             print("Form submitted. Processing response...")
             
             # Parse the response for balance information
             balance_soup = BeautifulSoup(balance_response.content, 'html.parser')
+            
+            # Save response for debugging (optional)
+            self._save_response_for_debugging(balance_response.content, card_number)
             
             # Look for balance information in the response
             balance_info = self._extract_balance_info(balance_soup)
@@ -97,7 +166,8 @@ class ChipotleBalanceChecker:
                 'card_number': card_number,
                 'email': email,
                 'message': balance_info.get('message', 'Balance retrieved successfully'),
-                'raw_response': balance_info.get('raw_response', '')
+                'raw_response': balance_info.get('raw_response', ''),
+                'form_data_used': form_data
             }
             
         except requests.RequestException as e:
@@ -117,38 +187,120 @@ class ChipotleBalanceChecker:
         
         # Get the full text content for analysis
         text_content = soup.get_text()
-        balance_info['raw_response'] = text_content[:500] + "..." if len(text_content) > 500 else text_content
+        balance_info['raw_response'] = text_content[:1000] + "..." if len(text_content) > 1000 else text_content
         
-        # Look for balance patterns
+        # Debug: Print key parts of the response
+        print(f"Response length: {len(text_content)} characters")
+        print(f"Response preview: {text_content[:200]}...")
+        
+        # Look for specific balance-related elements
+        balance_elements = soup.find_all(['div', 'span', 'p', 'h1', 'h2', 'h3'], 
+                                       string=re.compile(r'\$[\d,]+\.?\d{2}', re.IGNORECASE))
+        
+        if balance_elements:
+            for element in balance_elements:
+                element_text = element.get_text().strip()
+                print(f"Found balance element: {element_text}")
+                balance_match = re.search(r'\$[\d,]+\.?\d{2}', element_text)
+                if balance_match:
+                    balance_info['balance'] = balance_match.group()
+                    balance_info['message'] = 'Balance retrieved successfully'
+                    return balance_info
+        
+        # Look for balance in various formats
         balance_patterns = [
-            r'\$[\d,]+\.?\d{2}',  # Dollar amounts with cents
-            r'balance[:\s]*\$?[\d,]+\.?\d{2}',  # Balance labels
-            r'remaining[:\s]*\$?[\d,]+\.?\d{2}',  # Remaining balance
-            r'available[:\s]*\$?[\d,]+\.?\d{2}',  # Available balance
+            r'\$[\d,]+\.?\d{2}',  # $25.50
+            r'[\d,]+\.?\d{2}',    # 25.50
+            r'balance[:\s]*\$?[\d,]+\.?\d{2}',  # Balance: $25.50
+            r'remaining[:\s]*\$?[\d,]+\.?\d{2}',  # Remaining: $25.50
+            r'available[:\s]*\$?[\d,]+\.?\d{2}',  # Available: $25.50
+            r'current[:\s]*\$?[\d,]+\.?\d{2}',    # Current: $25.50
+            r'gift card[:\s]*\$?[\d,]+\.?\d{2}',  # Gift card: $25.50
         ]
         
         for pattern in balance_patterns:
             matches = re.findall(pattern, text_content, re.IGNORECASE)
             if matches:
                 balance_info['balance'] = matches[0]
-                break
+                balance_info['message'] = 'Balance retrieved successfully'
+                print(f"Found balance with pattern {pattern}: {matches[0]}")
+                return balance_info
         
-        # Look for success indicators
-        success_indicators = ['balance', 'remaining', 'available', 'gift card']
-        success_found = any(indicator in text_content.lower() for indicator in success_indicators)
+        # Look for specific error messages
+        error_patterns = [
+            r'invalid.*card',
+            r'card.*not.*found',
+            r'incorrect.*number',
+            r'expired.*card',
+            r'card.*number.*required',
+            r'please.*enter.*valid',
+            r'error.*occurred',
+            r'not.*recognized'
+        ]
         
-        # Look for error messages
-        error_indicators = ['invalid', 'error', 'not found', 'incorrect', 'expired', 'invalid card']
-        error_found = any(indicator in text_content.lower() for indicator in error_indicators)
+        for pattern in error_patterns:
+            if re.search(pattern, text_content, re.IGNORECASE):
+                balance_info['message'] = f'Error: {pattern.replace(".*", " ").title()}'
+                print(f"Found error pattern: {pattern}")
+                return balance_info
         
-        if error_found:
-            balance_info['message'] = 'Error: Invalid card number or other issue'
-        elif success_found and balance_info.get('balance'):
-            balance_info['message'] = 'Balance retrieved successfully'
-        else:
-            balance_info['message'] = 'Response received but balance information unclear'
+        # Look for success indicators that might indicate balance was found
+        success_indicators = [
+            'balance has been sent',
+            'email has been sent',
+            'balance information',
+            'gift card balance',
+            'remaining balance',
+            'available balance'
+        ]
+        
+        for indicator in success_indicators:
+            if indicator in text_content.lower():
+                balance_info['message'] = 'Balance information sent to email'
+                print(f"Found success indicator: {indicator}")
+                return balance_info
+        
+        # Check if we're back to the original form (indicates form submission issue)
+        if '16-digit gift card number' in text_content.lower() and 'email address' in text_content.lower():
+            if 'recaptcha' in text_content.lower():
+                balance_info['message'] = 'reCaptcha verification required - this requires manual browser interaction'
+                print("Detected reCaptcha requirement")
+            else:
+                balance_info['message'] = 'Form submission issue - please check card number format'
+                print("Detected form resubmission - likely validation error")
+            return balance_info
+        
+        # Look for any dollar amounts in the entire response
+        all_dollar_amounts = re.findall(r'\$[\d,]+\.?\d{2}', text_content)
+        if all_dollar_amounts:
+            # Take the first reasonable amount (not $0.00 unless it's the only one)
+            for amount in all_dollar_amounts:
+                if amount != '$0.00' or len(all_dollar_amounts) == 1:
+                    balance_info['balance'] = amount
+                    balance_info['message'] = 'Balance found in response'
+                    print(f"Found dollar amount: {amount}")
+                    return balance_info
+        
+        # If we get here, we couldn't extract clear information
+        balance_info['message'] = 'Response received but balance information unclear - may need manual verification'
+        print("Could not extract clear balance information")
         
         return balance_info
+    
+    def _save_response_for_debugging(self, response_content, card_number):
+        """Save the HTML response for debugging purposes."""
+        try:
+            import os
+            debug_dir = "debug_responses"
+            if not os.path.exists(debug_dir):
+                os.makedirs(debug_dir)
+            
+            filename = f"{debug_dir}/response_{card_number[-4:]}_{int(time.time())}.html"
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(response_content.decode('utf-8'))
+            print(f"Response saved to: {filename}")
+        except Exception as e:
+            print(f"Could not save debug response: {e}")
 
 
 def main():
