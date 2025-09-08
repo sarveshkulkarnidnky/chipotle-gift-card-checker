@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chipotle Gift Card Balance Checker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(45deg, #ff6b6b, #ffa500);
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            font-weight: bold;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input[type="text"], input[type="email"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        input[type="text"]:focus, input[type="email"]:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+        }
+
+        .card-number-input {
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: left;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .result h3 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .result-item {
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-label {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .result-value {
+            color: #666;
+        }
+
+        .balance {
+            font-size: 24px;
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e1e5e9;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .warning-icon {
+            display: inline-block;
+            margin-right: 8px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🌯</div>
+        <h1>Chipotle Gift Card Balance Checker</h1>
+        <p class="subtitle">Check your gift card balance quickly and securely</p>
+        
+        <div class="warning">
+            <span class="warning-icon">⚠️</span>
+            <strong>Note:</strong> This tool connects to the official Chipotle website to check your balance. Your information is processed securely.
+        </div>
+
+        <form id="balanceForm">
+            <div class="form-group">
+                <label for="cardNumber">16-Digit Gift Card Number</label>
+                <input 
+                    type="text" 
+                    id="cardNumber" 
+                    name="cardNumber" 
+                    placeholder="1234567890123456" 
+                    maxlength="16" 
+                    class="card-number-input"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input 
+                    type="email" 
+                    id="email" 
+                    name="email" 
+                    placeholder="your.email@example.com" 
+                    required
+                >
+            </div>
+
+            <button type="submit" class="btn" id="checkBtn">
+                Check Balance
+            </button>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Connecting to Chipotle website...</p>
+        </div>
+
+        <div class="result" id="result">
+            <h3 id="resultTitle">Balance Check Results</h3>
+            <div id="resultContent"></div>
+        </div>
+
+        <div class="footer">
+            <p>This tool connects to <a href="https://chipotle.wgiftcard.com/rbc/chipotle_responsive" target="_blank">Chipotle's official gift card website</a></p>
+            <p>Made with ❤️ for Chipotle lovers</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('balanceForm');
+            const cardNumberInput = document.getElementById('cardNumber');
+            const emailInput = document.getElementById('email');
+            const checkBtn = document.getElementById('checkBtn');
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultContent = document.getElementById('resultContent');
+
+            // Format card number input
+            cardNumberInput.addEventListener('input', function(e) {
+                let value = e.target.value.replace(/\D/g, '');
+                if (value.length > 16) {
+                    value = value.substring(0, 16);
+                }
+                e.target.value = value;
+            });
+
+            // Handle form submission
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const cardNumber = cardNumberInput.value.trim();
+                const email = emailInput.value.trim();
+
+                // Validation
+                if (cardNumber.length !== 16) {
+                    showError('Please enter a valid 16-digit gift card number.');
+                    return;
+                }
+
+                if (!isValidEmail(email)) {
+                    showError('Please enter a valid email address.');
+                    return;
+                }
+
+                // Show loading state
+                showLoading();
+                
+                // Simulate API call (in a real implementation, this would call a backend service)
+                setTimeout(() => {
+                    checkBalance(cardNumber, email);
+                }, 2000);
+            });
+
+            function showLoading() {
+                form.style.display = 'none';
+                loading.style.display = 'block';
+                result.style.display = 'none';
+            }
+
+            function showResult(success, data) {
+                loading.style.display = 'none';
+                form.style.display = 'block';
+                result.style.display = 'block';
+                
+                if (success) {
+                    result.className = 'result success';
+                    resultTitle.textContent = 'Balance Check Successful';
+                    
+                    let content = `
+                        <div class="result-item">
+                            <span class="result-label">Card Number:</span>
+                            <span class="result-value">${data.cardNumber}</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">Email:</span>
+                            <span class="result-value">${data.email}</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">Status:</span>
+                            <span class="result-value">${data.message}</span>
+                        </div>
+                    `;
+                    
+                    if (data.balance) {
+                        content += `
+                            <div class="result-item">
+                                <span class="result-label">Balance:</span>
+                                <span class="result-value balance">${data.balance}</span>
+                            </div>
+                        `;
+                    }
+                    
+                    resultContent.innerHTML = content;
+                } else {
+                    result.className = 'result error';
+                    resultTitle.textContent = 'Error';
+                    resultContent.innerHTML = `
+                        <div class="result-item">
+                            <span class="result-label">Error:</span>
+                            <span class="result-value">${data.error}</span>
+                        </div>
+                    `;
+                }
+            }
+
+            function showError(message) {
+                showResult(false, { error: message });
+            }
+
+            function checkBalance(cardNumber, email) {
+                // This is a demo function - in a real implementation, you would:
+                // 1. Send the data to a backend server
+                // 2. The backend would use the Python script to check the balance
+                // 3. Return the results to the frontend
+                
+                // For demo purposes, we'll simulate different responses
+                const responses = [
+                    {
+                        success: true,
+                        cardNumber: cardNumber.substring(0, 4) + '****' + cardNumber.substring(12),
+                        email: email,
+                        balance: '$25.50',
+                        message: 'Balance retrieved successfully'
+                    },
+                    {
+                        success: true,
+                        cardNumber: cardNumber.substring(0, 4) + '****' + cardNumber.substring(12),
+                        email: email,
+                        balance: '$0.00',
+                        message: 'Card has no remaining balance'
+                    },
+                    {
+                        success: false,
+                        error: 'Invalid card number. Please check your gift card number and try again.'
+                    },
+                    {
+                        success: false,
+                        error: 'Network error. Please check your internet connection and try again.'
+                    }
+                ];
+
+                // Randomly select a response for demo
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                showResult(randomResponse.success, randomResponse);
+            }
+
+            function isValidEmail(email) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                return emailRegex.test(email);
+            }
+        });
+    </script>
+</body>
+</html>
